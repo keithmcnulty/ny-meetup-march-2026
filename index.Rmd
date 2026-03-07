@@ -19,6 +19,14 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 class: left, middle, r-logo
 
+## Follow this on your device
+
+<h1>https://nymeetup.keithmcnulty.org</h1>
+
+
+---
+class: left, middle, r-logo
+
 ## My Book
 
 <table width="100%" border="0" cellpadding="20">
