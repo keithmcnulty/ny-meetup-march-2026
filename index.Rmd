@@ -1,0 +1,493 @@
+---
+title: "Modeling on Small Data Using Bayesian Inference"
+subtitle: "New York Strategic HR Analytics Meetup - March 2026"
+author: "Keith McNulty"
+output:
+  xaringan::moon_reader:
+    css: style.css
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+class: left, middle, r-logo
+
+## My Book
+
+<table width="100%" border="0" cellpadding="20">
+    <tr>
+        <td width="50%" valign="top">
+        <ul>
+            <li><a href="https://peopleanalytics-regression-book.org">Handbook of Regression Modeling in People Analytics</a></li>
+            <li>First edition published 2021</li>
+            <li>New edition now up online - print version in Q3 2026</li>
+            <li>5 new chapters on count regression, Bayesian modeling and causal inference</li>
+            <li>Today's talk uses some of the material from the new Bayesian chapters</li>
+            <li>Code for this presentation can be found <a href="https://github.com/keithmcnulty/ny-meetup-march-2026">here</a></li> 
+        </ul>
+        </td>
+        <td width="50%" valign="top">
+        <img src="https://peopleanalytics-regression-book.org/www/cover/coverpage.png" alt="Book Cover" style="width: 75%;">
+        </td>
+    </tr>
+</table>
+
+---
+class: left, middle, r-logo
+
+## 'Small' data
+
+
+&#x1F914; 'Small data' could be considered data where the number of observations is less than 100 - this is not an official definition, but it's a personal rule of thumb.
+
+&#x1F914;  In people analytics, we often have small data sets, especially if we work for a small organization or when we're looking at specific teams or departments within an organization.
+
+&#x1F914; Many of us work in pilot studies or proof of concept projects where we have limited data to work with.
+
+&#x1F62B;  Working with small data can be challenging because traditional statistical methods often rely on larger sample sizes to provide reliable estimates and inferences.
+
+
+---
+class: left, middle, r-logo
+
+## What do we need when we work with small data?
+
+&#x1F4A1;  Expert knowledge about the process we are modeling
+
+&#x1F4A1;  A way to incorporate that expert knowledge into our models
+
+&#x1F4A1;  More precise ways to describe the uncertainty in our estimates
+
+
+---
+class: left, middle, r-logo
+
+## Let's look at a quick example
+
+```{r}
+library(peopleanalyticsdata)
+
+head(ugtests)
+```
+
+This `ugtests` data set contains data on the performance of `r nrow(ugtests)` students on a 4-year undergraduate Biology degree program.  This is **not** small data.
+
+
+---
+class: left, middle, r-logo
+
+## Larger data gives us narrow inferences to test our hypotheses
+
+Hypothesis: performance in the second year is correlated with performance in the final year.
+
+```{r}
+cor.test(ugtests$Yr2, ugtests$Final)
+```
+We can clearly reject the null hypothesis - the narrow confidence interval for the correlation coefficient and the very small p-value gives us a lot of confidence that the correlation is not zero.  
+
+But what if we only had data on 20 students?
+
+
+---
+class: left, middle, r-logo
+
+## But smaller data has greater uncertainty
+
+Take a random sample of 20 and look at the correlation between Year 2 and Final performance again.
+
+```{r}
+set.seed(123)
+sample_data <- ugtests[sample(nrow(ugtests), 20), ]
+cor.test(sample_data$Yr2, sample_data$Final)
+```
+
+Ugh, we can't reject the null hypothesis here!  That confidence interval is extremely wide.  We just don't have enough data to be confident that the correlation is not zero.  
+
+This is a common problem when working with small data - we often have a lot of uncertainty in our estimates, which can make it difficult to draw meaningful conclusions.
+
+---
+class: left, middle, r-logo
+
+## Pop quiz
+
+*Which of these statements most accurately defines a p-value?*
+
+A) The probability that null hypothesis is true - $P(H_0)$
+
+B) The probability that the null hypothesis is true given we observed this data - $P(H_0 \mid data)$ 
+
+C) The probability we observed this data given that the null hypothesis is true - $P(data \mid H_0)$
+
+D) The probability we abserved this data - $P(data)$
+
+
+---
+class: left, middle, r-logo
+
+## Bayes' Theorem
+
+Bayes' Theorem allows us to 'flip' how we test and describe our hypotheses.  
+
+Instead of asking about the probability of the data given the hypothesis, we can ask about the probability of the hypothesis given the data.  
+
+$$
+P(H \mid D) = \frac{P(D \mid H) P(H)}{P(D)}
+$$
+---
+class: left, middle, r-logo
+
+## Quick experiment
+
+We have two dice:
+
+* One is blue and has 6 faces with the numbers 1-6 on them (a 'normal' die)
+* The other is red and has 1, 2, 3, 6, 6, 6 on the faces (a 'loaded' die)
+* The red die is also heavier.  If you throw both in the air, the red die has a 2/3 chance of landing first
+
+If the first die to land shows a six, what is the probability that it was the loaded red die?  That is - what is $P(red \mid six)$?
+
+I've simulated this experiment at https://dicegame.keithmcnulty.org - let's everyone spend two minutes repeatedly throwing the dice and see what we get.
+
+---
+class: left, middle, r-logo
+
+## Bayes' theorem in action
+
+$$
+\begin{align*}
+P(six \mid red) &= \frac{1}{2} \\
+P(red) &= \frac{2}{3} \\
+P(six) &= P(six \mid red) P(red) + P(six \mid blue) P(blue) \\
+&= \frac{1}{2} \cdot \frac{2}{3} + \frac{1}{6} \cdot \frac{1}{3} \\
+&= \frac{7}{18} \\
+P(red \mid six) &= \frac{P(six \mid red) P(red)}{P(six)} \\
+&= \frac{\frac{1}{2} \cdot \frac{2}{3}}{\frac{7}{18}} \\
+&= \frac{6}{7} \approx 86\%\\
+\end{align*}
+$$
+
+---
+class: left, middle, r-logo
+
+## Applying Bayes' Theorem
+
+We're introducing a new learning program for engineers who need to pass a certification exam. We want to know what pass rate we can expect.  Here's what we know:
+
+1.  The experts who have constructed the program think the pass rate will be around 80-90%, but they aren't sure.  This is our *prior* belief about the pass rate.
+2.  We have a small pilot group of 20 engineers who have completed the program and taken the exam, and 12 of them passed.  This is our data.
+
+We want to calculated an *updated* belief about the pass rate after seeing the data - this is our *posterior* belief.
+
+---
+class: left, middle, r-logo
+
+## Simulating our prior belief
+
+Let's call the pass rate $\theta$ (theta). Lets take 1000 possible values for theta between 0 and 1, and assign a prior probability to each value based on our expert knowledge.  
+
+We can use a beta distribution to do this, which is a common choice for modeling probabilities or pass rates.  Let's say $\theta \sim \mathrm{Beta}(8, 2)$, which gives us a distribution that is skewed towards higher pass rates (80-90%) but still allows for some uncertainty.  This is our distribution for $P(\theta)$, our prior belief about the pass rate.
+
+```{r}
+# create a vector with 1000 possible values 
+# for theta between 0 and 1
+theta_values <- seq(0, 1, length.out = 1000)
+
+# simulate the prior distribution using a Beta distribution 
+# with alpha = 8 and beta = 2 
+unnormalized_prior <- dbeta(theta_values, shape1 = 8, shape2 = 2)
+```
+---
+class: left, middle, r-logo
+
+## Visualizing our prior belief
+
+```{r, echo = FALSE, fig.align = "center"}
+# load ggplot2 for plotting
+library(ggplot2)
+# create a data frame for plotting
+prior_df <- data.frame(
+  theta = theta_values, 
+  density = unnormalized_prior/sum(unnormalized_prior)
+)
+
+# plot the prior distribution
+ggplot(prior_df, aes(x = theta, y = density)) +
+  geom_line(color = "blue") +
+  geom_area(fill = "blue", alpha = 0.4) +
+  labs(x = expression(theta),
+       y = "Probability") +
+  theme_minimal()
+```
+
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+The data we observed is that 12 out of 20 engineers passed the exam.  
+
+We can model this data using a binomial likelihood function, which gives us the probability of observing 12 successes (passes) out of 20 trials (engineers) for different values of $\theta$.  This gives us $P(data \mid \theta)$.
+
+```{r}
+# simulate the likelihood function using a Binomial distribution
+likelihood_function <- dbinom(12, size = 20, prob = theta_values)
+```
+
+Now we have $P(\theta)$ (our prior belief) and $P(data \mid \theta)$ (the likelihood of the data) for 1000 possible values of the pass rate $\theta$.  
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+Let's look at what we have so far.
+
+```{r}
+# create a data frame
+bayes_df <- data.frame(
+  theta = theta_values, 
+  prior = unnormalized_prior/sum(unnormalized_prior),
+  likelihood = likelihood_function
+)
+
+head(bayes_df)
+```
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+Now we just apply Bayes theorem across every row of our data to get our updated (posterior) belief about the pass rate $\theta$ after seeing the data.
+
+Remember that Bayes theorem is:
+
+$$
+P(\theta \mid data) = \frac{P(data \mid \theta) P(\theta)}{P(data)}
+$$
+
+```{r}
+# calculate the unnormalized posterior by multiplying the prior and likelihood
+bayes_df$unnormalized_posterior <- bayes_df$prior * bayes_df$likelihood
+
+# normalize the posteriotr by dividing by the sum of the unnormalized posterior
+bayes_df$posterior <- bayes_df$unnormalized_posterior / 
+  sum(bayes_df$unnormalized_posterior)
+```
+
+---
+class: left, middle, r-logo
+
+## Viewing our updated (posterior) belief
+
+```{r, echo = FALSE, fig.align = "center"}
+# combine prior, likelihood and posterior into a single data frame for plotting
+combined_df <- data.frame(
+  theta = rep(bayes_df$theta, 2),
+  density = c(bayes_df$prior, bayes_df$posterior),
+  Type = rep(c("Prior", "Posterior"), each = length(bayes_df$theta))
+)
+
+# plot prior, likelihood and posterior together in scaled density plot
+ggplot(combined_df, aes(x = theta, y = density, color = Type, fill = Type)) +
+  geom_line(linewidth = 1, show.legend = FALSE) +
+  geom_area(alpha = 0.4, position = "identity") +
+  scale_color_manual(values = c("magenta", "blue")) +
+  scale_fill_manual(values = c("magenta", "blue")) +
+  labs(x = expression(theta),
+       y = "Probability",
+       fill = "Type") +
+  theme_minimal() +
+  guides(color = "none")
+```
+
+
+---
+class: left, middle, r-logo
+
+## "Today's posterior is tomorrow's prior"
+
+Let's say later we get data on another 30 engineers who completed the program and took the exam, and 25 of them passed. 
+
+We can further update our belief by taking the our last posterior as our prior, and going through the same process again.  Now we would see our belief update like this.
+
+```{r, echo = FALSE, fig.align = "center", fig.height = 4}
+# simulate new data
+new_likelihood <- dbinom(25, size = 30, prob = theta_values)
+# calculate the new unnormalized posterior by multiplying the previous posterior and the new likelihood
+bayes_df$new_unnormalized_posterior <- bayes_df$posterior * new_likelihood
+# normalize the new posterior by dividing by the sum of the new unnormalized posterior
+bayes_df$new_posterior <- bayes_df$new_unnormalized_posterior / 
+  sum(bayes_df$new_unnormalized_posterior)
+
+# combine prior, likelihood and posterior into a single data frame for plotting
+combined_df2 <- data.frame(
+  theta = rep(bayes_df$theta, 3),
+  density = c(bayes_df$prior, bayes_df$posterior, bayes_df$new_posterior),
+  Type = rep(c("Initial Prior", "Posterior after first data", "Posterior after second data"), each = length(bayes_df$theta))
+) 
+
+# plot prior, likelihood and posterior together in scaled density plot
+ggplot(combined_df2, aes(x = theta, y = density, color = Type, fill = Type)) +
+  geom_line(linewidth = 1, show.legend = FALSE) +
+  geom_area(alpha = 0.4, position = "identity") +
+  scale_color_manual(values = c("magenta", "blue", "cyan")) +
+  scale_fill_manual(values = c("magenta", "blue", "cyan")) +
+  labs(x = expression(theta),
+       y = "Probability",
+       fill = "Type") +
+  theme_minimal() +
+  guides(color = "none")
+```
+
+
+---
+class: left, middle, r-logo
+
+## Modeling on small data
+
+What we just learned can apply to regression models.  We can produce explicit distributions for our parameters, helping us describe them more precisely.
+
+Going back to our `ugtests` data, what happens if we only have data on our 20 students and we want to model the relationship between Year 1, Year 2 and Year 3 performance and Final performance using a regular linear regression model?
+
+```{r}
+# run a linear model and get coefficient confidence intervals
+model <- lm(Final ~ Yr1 + Yr2 + Yr3, data = sample_data)
+confint(model)
+```
+These inferences are extremely wide - we have a lot of uncertainty about the true values of our coefficients.  We could do with some expert input here.
+
+---
+class: left, middle, r-logo
+
+## Taking a Bayesian approach
+
+We can take a Bayesian approach to this regression model, which allows us to incorporate expert knowledge about the likely values of our coefficients and gives us more precise estimates of the uncertainty in those coefficients.
+
+Experts:  "We do not believe that Yr1 has any influence on final year scores"
+
+```{r}
+# load the brms package for Bayesian regression modeling
+library(brms)
+
+# set some priors for our coefficients based on expert knowledge
+priors <- c(
+  set_prior("normal(0, 0.05)", class = "b", coef = "Yr1")
+)
+
+```
+
+---
+class: left, middle, r-logo
+
+## Running Bayesian linear regression
+
+```{r, eval = FALSE}
+# run a Bayesian linear regression model
+bayesian_model <- brm(
+  Final ~ Yr1 + Yr2 + Yr3,
+  data = sample_data,
+  prior = priors,
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  seed = 123
+)
+
+fixef(bayesian_model)
+```
+
+```{r, echo = FALSE}
+bayesian_model <- readRDS("bayesian_model.RDS")
+
+fixef(bayesian_model)
+```
+
+
+---
+class: left, middle, r-logo
+
+## We have explicit distributions for our coefficients
+
+```{r, fig.height=4, fig.align="center"}
+# plot posterior distributions for coefficients
+library(bayesplot)
+
+mcmc_areas(
+  bayesian_model, 
+  pars = c("b_Yr1", "b_Yr2", "b_Yr3"),
+  prob = 0.66, # 66% Credible Interval (shaded dark)
+  prob_outer = 0.95 # 95% Credible Interval (limits)
+)
+```
+
+---
+class: left, middle, r-logo
+
+## We can make very precise statements about our coefficients
+
+Q:  What is the probability that Year 2 performance has a positive effect on Final year?
+
+```{r}
+# extract posterior samples for the Yr2 coefficient
+posterior_samples <- posterior_samples(bayesian_model, 
+                                       pars = "b_Yr2")
+# calculate the probability that the coefficient is greater than 0
+mean(posterior_samples$b_Yr2 > 0)
+```
+
+Q:  What is the probability that Year 3 performance has three times the effect of Year 2 performance on Final year?
+
+```{r}
+# extract posterior samples for the Yr3 and Yr2 coefficients
+posterior_samples <- posterior_samples(bayesian_model, 
+                                       pars = c("b_Yr3", "b_Yr2"))
+# calculate the probability that the Yr3 coefficient is >3 x Yr2 coefficient
+mean(posterior_samples$b_Yr3 > 3 * posterior_samples$b_Yr2)
+```
+
+---
+class: left, middle, r-logo
+
+## Summary
+
+Bayesian inference is worth considering when working with small data because:
+
+1. It allows us to incorporate expert knowledge into our models, which can help us make more informed inferences when we have limited data.
+
+2.  It gives us more precise estimates of the uncertainty in our parameters, allowing us to make more nuanced statements about our hypotheses.
+
+
+
+
+
+---
+class: left, middle, r-logo
+
+## Learning more
+
+New edition has the following technical components:
+
+1.  Chapters 3-11 teaches classical regression modeling techniques, mostly the same as first edition (but with a new chapter on regression on count data)
+
+2.  Chapter 12 introduces Bayesian inference and Bayesian hypothesis testing
+
+3.  Chapter 13 teaches how to run Bayesian linear regression
+
+4.  Chapter 14 teaches how to run all other common regression types using Bayesian inference (logistic regression, Poisson regression, negative binomial regression, etc)
+
+5.  Chapter 15 introduces causal inference and teaches how to run causal models using Bayesian inference.  
+
+
+---
+class: left, middle, r-logo
+
+## Thank you!  Questions?

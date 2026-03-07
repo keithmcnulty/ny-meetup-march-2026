@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Modeling on Small Data Using Bayesian Inference</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Keith McNulty" />
+    <script src="libs/header-attrs/header-attrs.js"></script>
+    <link rel="stylesheet" href="style.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Modeling on Small Data Using Bayesian Inference
+]
+.subtitle[
+## New York Strategic HR Analytics Meetup - March 2026
+]
+.author[
+### Keith McNulty
+]
+
+---
+
+
+
+
+class: left, middle, r-logo
+
+## My Book
+
+&lt;table width="100%" border="0" cellpadding="20"&gt;
+    &lt;tr&gt;
+        &lt;td width="50%" valign="top"&gt;
+        &lt;ul&gt;
+            &lt;li&gt;&lt;a href="https://peopleanalytics-regression-book.org"&gt;Handbook of Regression Modeling in People Analytics&lt;/a&gt;&lt;/li&gt;
+            &lt;li&gt;First edition published 2021&lt;/li&gt;
+            &lt;li&gt;New edition now up online - print version in Q3 2026&lt;/li&gt;
+            &lt;li&gt;5 new chapters on count regression, Bayesian modeling and causal inference&lt;/li&gt;
+            &lt;li&gt;Today's talk uses some of the material from the new Bayesian chapters&lt;/li&gt;
+            &lt;li&gt;Code for this presentation can be found &lt;a href="https://github.com/keithmcnulty/ny-meetup-march-2026"&gt;here&lt;/a&gt;&lt;/li&gt; 
+        &lt;/ul&gt;
+        &lt;/td&gt;
+        &lt;td width="50%" valign="top"&gt;
+        &lt;img src="https://peopleanalytics-regression-book.org/www/cover/coverpage.png" alt="Book Cover" style="width: 75%;"&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+&lt;/table&gt;
+
+---
+class: left, middle, r-logo
+
+## 'Small' data
+
+
+&amp;#x1F914; 'Small data' could be considered data where the number of observations is less than 100 - this is not an official definition, but it's a personal rule of thumb.
+
+&amp;#x1F914;  In people analytics, we often have small data sets, especially if we work for a small organization or when we're looking at specific teams or departments within an organization.
+
+&amp;#x1F914; Many of us work in pilot studies or proof of concept projects where we have limited data to work with.
+
+&amp;#x1F62B;  Working with small data can be challenging because traditional statistical methods often rely on larger sample sizes to provide reliable estimates and inferences.
+
+
+---
+class: left, middle, r-logo
+
+## What do we need when we work with small data?
+
+&amp;#x1F4A1;  Expert knowledge about the process we are modeling
+
+&amp;#x1F4A1;  A way to incorporate that expert knowledge into our models
+
+&amp;#x1F4A1;  More precise ways to describe the uncertainty in our estimates
+
+
+---
+class: left, middle, r-logo
+
+## Let's look at a quick example
+
+
+``` r
+library(peopleanalyticsdata)
+
+head(ugtests)
+```
+
+```
+##   Yr1 Yr2 Yr3 Final
+## 1  27  50  52    93
+## 2  70 104 126   207
+## 3  27  36 148   175
+## 4  26  75 115   125
+## 5  46  77  75   114
+## 6  86 122 119   159
+```
+
+This `ugtests` data set contains data on the performance of 975 students on a 4-year undergraduate Biology degree program.  This is **not** small data.
+
+
+---
+class: left, middle, r-logo
+
+## Larger data gives us narrow inferences to test our hypotheses
+
+Hypothesis: performance in the second year is correlated with performance in the final year.
+
+
+``` r
+cor.test(ugtests$Yr2, ugtests$Final)
+```
+
+```
+## 
+## 	Pearson's product-moment correlation
+## 
+## data:  ugtests$Yr2 and ugtests$Final
+## t = 10.583, df = 973, p-value &lt; 2.2e-16
+## alternative hypothesis: true correlation is not equal to 0
+## 95 percent confidence interval:
+##  0.2638375 0.3764871
+## sample estimates:
+##       cor 
+## 0.3212985
+```
+We can clearly reject the null hypothesis - the narrow confidence interval for the correlation coefficient and the very small p-value gives us a lot of confidence that the correlation is not zero.  
+
+But what if we only had data on 20 students?
+
+
+---
+class: left, middle, r-logo
+
+## But smaller data has greater uncertainty
+
+Take a random sample of 20 and look at the correlation between Year 2 and Final performance again.
+
+
+``` r
+set.seed(123)
+sample_data &lt;- ugtests[sample(nrow(ugtests), 20), ]
+cor.test(sample_data$Yr2, sample_data$Final)
+```
+
+```
+## 
+## 	Pearson's product-moment correlation
+## 
+## data:  sample_data$Yr2 and sample_data$Final
+## t = 0.64862, df = 18, p-value = 0.5248
+## alternative hypothesis: true correlation is not equal to 0
+## 95 percent confidence interval:
+##  -0.3122795  0.5564339
+## sample estimates:
+##       cor 
+## 0.1511253
+```
+
+Ugh, we can't reject the null hypothesis here!  That confidence interval is extremely wide.  We just don't have enough data to be confident that the correlation is not zero.  
+
+This is a common problem when working with small data - we often have a lot of uncertainty in our estimates, which can make it difficult to draw meaningful conclusions.
+
+---
+class: left, middle, r-logo
+
+## Pop quiz
+
+*Which of these statements most accurately defines a p-value?*
+
+A) The probability that null hypothesis is true - `\(P(H_0)\)`
+
+B) The probability that the null hypothesis is true given we observed this data - `\(P(H_0 \mid data)\)` 
+
+C) The probability we observed this data given that the null hypothesis is true - `\(P(data \mid H_0)\)`
+
+D) The probability we abserved this data - `\(P(data)\)`
+
+
+---
+class: left, middle, r-logo
+
+## Bayes' Theorem
+
+Bayes' Theorem allows us to 'flip' how we test and describe our hypotheses.  
+
+Instead of asking about the probability of the data given the hypothesis, we can ask about the probability of the hypothesis given the data.  
+
+$$
+P(H \mid D) = \frac{P(D \mid H) P(H)}{P(D)}
+$$
+---
+class: left, middle, r-logo
+
+## Quick experiment
+
+We have two dice:
+
+* One is blue and has 6 faces with the numbers 1-6 on them (a 'normal' die)
+* The other is red and has 1, 2, 3, 6, 6, 6 on the faces (a 'loaded' die)
+* The red die is also heavier.  If you throw both in the air, the red die has a 2/3 chance of landing first
+
+If the first die to land shows a six, what is the probability that it was the loaded red die?  That is - what is `\(P(red \mid six)\)`?
+
+I've simulated this experiment at https://dicegame.keithmcnulty.org - let's everyone spend two minutes repeatedly throwing the dice and see what we get.
+
+---
+class: left, middle, r-logo
+
+## Bayes' theorem in action
+
+$$
+`\begin{align*}
+P(six \mid red) &amp;= \frac{1}{2} \\
+P(red) &amp;= \frac{2}{3} \\
+P(six) &amp;= P(six \mid red) P(red) + P(six \mid blue) P(blue) \\
+&amp;= \frac{1}{2} \cdot \frac{2}{3} + \frac{1}{6} \cdot \frac{1}{3} \\
+&amp;= \frac{7}{18} \\
+P(red \mid six) &amp;= \frac{P(six \mid red) P(red)}{P(six)} \\
+&amp;= \frac{\frac{1}{2} \cdot \frac{2}{3}}{\frac{7}{18}} \\
+&amp;= \frac{6}{7} \approx 86\%\\
+\end{align*}`
+$$
+
+---
+class: left, middle, r-logo
+
+## Applying Bayes' Theorem
+
+We're introducing a new learning program for engineers who need to pass a certification exam. We want to know what pass rate we can expect.  Here's what we know:
+
+1.  The experts who have constructed the program think the pass rate will be around 80-90%, but they aren't sure.  This is our *prior* belief about the pass rate.
+2.  We have a small pilot group of 20 engineers who have completed the program and taken the exam, and 12 of them passed.  This is our data.
+
+We want to calculated an *updated* belief about the pass rate after seeing the data - this is our *posterior* belief.
+
+---
+class: left, middle, r-logo
+
+## Simulating our prior belief
+
+Let's call the pass rate `\(\theta\)` (theta). Lets take 1000 possible values for theta between 0 and 1, and assign a prior probability to each value based on our expert knowledge.  
+
+We can use a beta distribution to do this, which is a common choice for modeling probabilities or pass rates.  Let's say `\(\theta \sim \mathrm{Beta}(8, 2)\)`, which gives us a distribution that is skewed towards higher pass rates (80-90%) but still allows for some uncertainty.  This is our distribution for `\(P(\theta)\)`, our prior belief about the pass rate.
+
+
+``` r
+# create a vector with 1000 possible values 
+# for theta between 0 and 1
+theta_values &lt;- seq(0, 1, length.out = 1000)
+
+# simulate the prior distribution using a Beta distribution 
+# with alpha = 8 and beta = 2 
+unnormalized_prior &lt;- dbeta(theta_values, shape1 = 8, shape2 = 2)
+```
+---
+class: left, middle, r-logo
+
+## Visualizing our prior belief
+
+&lt;img src="index_files/figure-html/unnamed-chunk-5-1.png" alt="" style="display: block; margin: auto;" /&gt;
+
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+The data we observed is that 12 out of 20 engineers passed the exam.  
+
+We can model this data using a binomial likelihood function, which gives us the probability of observing 12 successes (passes) out of 20 trials (engineers) for different values of `\(\theta\)`.  This gives us `\(P(data \mid \theta)\)`.
+
+
+``` r
+# simulate the likelihood function using a Binomial distribution
+likelihood_function &lt;- dbinom(12, size = 20, prob = theta_values)
+```
+
+Now we have `\(P(\theta)\)` (our prior belief) and `\(P(data \mid \theta)\)` (the likelihood of the data) for 1000 possible values of the pass rate `\(\theta\)`.  
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+Let's look at what we have so far.
+
+
+``` r
+# create a data frame
+bayes_df &lt;- data.frame(
+  theta = theta_values, 
+  prior = unnormalized_prior/sum(unnormalized_prior),
+  likelihood = likelihood_function
+)
+
+head(bayes_df)
+```
+
+```
+##         theta        prior   likelihood
+## 1 0.000000000 0.000000e+00 0.000000e+00
+## 2 0.001001001 7.250639e-23 1.264741e-31
+## 3 0.002002002 9.271518e-21 5.139000e-28
+## 4 0.003003003 1.582537e-19 6.614349e-26
+## 5 0.004004004 1.184374e-18 2.071390e-24
+## 6 0.005005005 5.641858e-18 2.990119e-23
+```
+
+---
+class: left, middle, r-logo
+
+## Updating our belief based on the data
+
+Now we just apply Bayes theorem across every row of our data to get our updated (posterior) belief about the pass rate `\(\theta\)` after seeing the data.
+
+Remember that Bayes theorem is:
+
+$$
+P(\theta \mid data) = \frac{P(data \mid \theta) P(\theta)}{P(data)}
+$$
+
+
+``` r
+# calculate the unnormalized posterior by multiplying the prior and likelihood
+bayes_df$unnormalized_posterior &lt;- bayes_df$prior * bayes_df$likelihood
+
+# normalize the posteriotr by dividing by the sum of the unnormalized posterior
+bayes_df$posterior &lt;- bayes_df$unnormalized_posterior / 
+  sum(bayes_df$unnormalized_posterior)
+```
+
+---
+class: left, middle, r-logo
+
+## Viewing our updated (posterior) belief
+
+&lt;img src="index_files/figure-html/unnamed-chunk-9-1.png" alt="" style="display: block; margin: auto;" /&gt;
+
+
+---
+class: left, middle, r-logo
+
+## "Today's posterior is tomorrow's prior"
+
+Let's say later we get data on another 30 engineers who completed the program and took the exam, and 25 of them passed. 
+
+We can further update our belief by taking the our last posterior as our prior, and going through the same process again.  Now we would see our belief update like this.
+
+&lt;img src="index_files/figure-html/unnamed-chunk-10-1.png" alt="" style="display: block; margin: auto;" /&gt;
+
+
+---
+class: left, middle, r-logo
+
+## Modeling on small data
+
+What we just learned can apply to regression models.  We can produce explicit distributions for our parameters, helping us describe them more precisely.
+
+Going back to our `ugtests` data, what happens if we only have data on our 20 students and we want to model the relationship between Year 1, Year 2 and Year 3 performance and Final performance using a regular linear regression model?
+
+
+``` r
+# run a linear model and get coefficient confidence intervals
+model &lt;- lm(Final ~ Yr1 + Yr2 + Yr3, data = sample_data)
+confint(model)
+```
+
+```
+##                    2.5 %     97.5 %
+## (Intercept) -94.70873351 44.4349808
+## Yr1          -0.19961029  1.0846639
+## Yr2           0.05007769  0.9503539
+## Yr3           0.81705350  1.3155063
+```
+These inferences are extremely wide - we have a lot of uncertainty about the true values of our coefficients.  We could do with some expert input here.
+
+---
+class: left, middle, r-logo
+
+## Taking a Bayesian approach
+
+We can take a Bayesian approach to this regression model, which allows us to incorporate expert knowledge about the likely values of our coefficients and gives us more precise estimates of the uncertainty in those coefficients.
+
+Experts:  "We do not believe that Yr1 has any influence on final year scores"
+
+
+``` r
+# load the brms package for Bayesian regression modeling
+library(brms)
+
+# set some priors for our coefficients based on expert knowledge
+priors &lt;- c(
+  set_prior("normal(0, 0.05)", class = "b", coef = "Yr1")
+)
+```
+
+---
+class: left, middle, r-logo
+
+## Running Bayesian linear regression
+
+
+``` r
+# run a Bayesian linear regression model
+bayesian_model &lt;- brm(
+  Final ~ Yr1 + Yr2 + Yr3,
+  data = sample_data,
+  prior = priors,
+  iter = 4000,
+  warmup = 1000,
+  chains = 4,
+  seed = 123
+)
+
+fixef(bayesian_model)
+```
+
+
+```
+##              Estimate   Est.Error         Q2.5      Q97.5
+## Intercept 11.28206472 23.48868812 -35.50407842 57.6006779
+## Yr1        0.01080304  0.04968778  -0.08663606  0.1058760
+## Yr2        0.34061322  0.20166153  -0.06197495  0.7434953
+## Yr3        1.09353761  0.12878436   0.83653831  1.3475441
+```
+
+
+---
+class: left, middle, r-logo
+
+## We have explicit distributions for our coefficients
+
+
+``` r
+# plot posterior distributions for coefficients
+library(bayesplot)
+
+mcmc_areas(
+  bayesian_model, 
+  pars = c("b_Yr1", "b_Yr2", "b_Yr3"),
+  prob = 0.66, # 66% Credible Interval (shaded dark)
+  prob_outer = 0.95 # 95% Credible Interval (limits)
+)
+```
+
+&lt;img src="index_files/figure-html/unnamed-chunk-15-1.png" alt="" style="display: block; margin: auto;" /&gt;
+
+---
+class: left, middle, r-logo
+
+## We can make very precise statements about our coefficients
+
+Q:  What is the probability that Year 2 performance has a positive effect on Final year?
+
+
+``` r
+# extract posterior samples for the Yr2 coefficient
+posterior_samples &lt;- posterior_samples(bayesian_model, 
+                                       pars = "b_Yr2")
+# calculate the probability that the coefficient is greater than 0
+mean(posterior_samples$b_Yr2 &gt; 0)
+```
+
+```
+## [1] 0.9555833
+```
+
+Q:  What is the probability that Year 3 performance has three times the effect of Year 2 performance on Final year?
+
+
+``` r
+# extract posterior samples for the Yr3 and Yr2 coefficients
+posterior_samples &lt;- posterior_samples(bayesian_model, 
+                                       pars = c("b_Yr3", "b_Yr2"))
+# calculate the probability that the Yr3 coefficient is &gt;3 x Yr2 coefficient
+mean(posterior_samples$b_Yr3 &gt; 3 * posterior_samples$b_Yr2)
+```
+
+```
+## [1] 0.548
+```
+
+---
+class: left, middle, r-logo
+
+## Summary
+
+Bayesian inference is worth considering when working with small data because:
+
+1. It allows us to incorporate expert knowledge into our models, which can help us make more informed inferences when we have limited data.
+
+2.  It gives us more precise estimates of the uncertainty in our parameters, allowing us to make more nuanced statements about our hypotheses.
+
+
+
+
+
+---
+class: left, middle, r-logo
+
+## Learning more
+
+New edition has the following technical components:
+
+1.  Chapters 3-11 teaches classical regression modeling techniques, mostly the same as first edition (but with a new chapter on regression on count data)
+
+2.  Chapter 12 introduces Bayesian inference and Bayesian hypothesis testing
+
+3.  Chapter 13 teaches how to run Bayesian linear regression
+
+4.  Chapter 14 teaches how to run all other common regression types using Bayesian inference (logistic regression, Poisson regression, negative binomial regression, etc)
+
+5.  Chapter 15 introduces causal inference and teaches how to run causal models using Bayesian inference.  
+
+
+---
+class: left, middle, r-logo
+
+## Thank you!  Questions?
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+  "highlightStyle": "github",
+  "highlightLines": true,
+  "countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
